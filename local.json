@@ -1,0 +1,12 @@
+{
+	"ess": {
+		"PmaxCh": -1000,
+		"PmaxDisch": 1000,
+		"Capacity": 10000
+	},
+	"pv": {
+		"PProd": 1000,
+		"Peak": 10000
+	},
+	"pmaxsite": 10000
+}
