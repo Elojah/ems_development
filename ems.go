@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -27,6 +28,22 @@ func (ems EMS) String() string {
 	return fmt.Sprintf("EMS:\n\tess:%v\n\tpv:%v\n\tpoc:%v\n\tpmaxsite:%v\n", ems.ESS, ems.PV, ems.POC, ems.PMaxSite)
 }
 
+// Next for debugging purposes simulates a next step in decision loop
+func (ems *EMS) Next() {
+	ems.ESS.E -= ems.ESS.P
+	ems.ESS.P = ems.ESS.SetPointP
+
+	ems.PV.P = ems.PV.SetPointP
+	ems.PV.Pprod += float64(rand.Int63n(10)-5) / 100 * ems.PV.Peak
+	if ems.PV.Pprod < 0 {
+		ems.PV.Pprod = 0
+	} else if ems.PV.Pprod > ems.PV.Peak {
+		ems.PV.Pprod = ems.PV.Peak
+	}
+
+	ems.POC.P = -ems.PV.P - ems.ESS.P + (float64(rand.Int63n(10)+10) / 100 * ems.PMaxSite)
+}
+
 func (ems EMS) GetPLoad() float64 {
 	// TODO: Ensure those 3 variables are returned at same timestamp to guarantee validity.
 	return ems.POC.P - ems.PV.P - ems.ESS.P
@@ -35,7 +52,7 @@ func (ems EMS) GetPLoad() float64 {
 func (ems EMS) Serve(ctx context.Context, delay time.Duration) error {
 	// Adjust margins
 	margin := 0.1 // 10% margin for safety triggers
-	ems.PMaxSite = ems.PMaxSite + (ems.PMaxSite * margin)
+	ems.PMaxSite = ems.PMaxSite - (ems.PMaxSite * margin)
 	pMinSite := 0 + ems.PMaxSite*margin
 
 	ticker := time.NewTicker(delay)
@@ -52,6 +69,10 @@ func (ems EMS) Serve(ctx context.Context, delay time.Duration) error {
 		default:
 		}
 
+		// DEBUG: simulate next iteration
+		ems.Next()
+		fmt.Println(ems)
+
 		/*
 		 DOMAIN LOGIC
 		*/
@@ -60,6 +81,7 @@ func (ems EMS) Serve(ctx context.Context, delay time.Duration) error {
 		// fmt.Printf("poc: %v\nems:%v\n", poc, ems)
 
 		// WARNING: Consumption exceeds PmaxSite
+		// CHANGE POC
 		if poc > ems.PMaxSite {
 			if err := ems.IncreaseSiteDischarge(poc - ems.PMaxSite); err != nil {
 				log.Error().Err(err).Msg("failed to increase site discharge")
@@ -72,6 +94,7 @@ func (ems EMS) Serve(ctx context.Context, delay time.Duration) error {
 		}
 
 		// WARNING: Consumption is below pMinSite
+		// CHANGE POC
 		if poc < pMinSite {
 			if err := ems.DecreaseSiteDischarge(poc - pMinSite); err != nil {
 				log.Error().Err(err).Msg("failed to decrease site discharge")
@@ -84,6 +107,7 @@ func (ems EMS) Serve(ctx context.Context, delay time.Duration) error {
 		}
 
 		// Balance PV and ESS productions
+		// KEEP POC
 		if err := ems.BalanceSiteDischarge(poc); err != nil {
 			log.Error().Err(err).Msg("failed to balance site discharge")
 
@@ -91,11 +115,25 @@ func (ems EMS) Serve(ctx context.Context, delay time.Duration) error {
 		}
 		log.Info().Msg("balanced site discharge")
 
-		// Adjust ESS charge depending on current stored energy and poc %
-		if err := ems.ESS.BalanceEnergy(poc / ems.PMaxSite); err != nil {
+		// Adjust PV charge (and POC) depending on current stored energy and poc %
+		// CHANGE POC
+		if delta, err := ems.PV.BalanceEnergy(poc, ems.PMaxSite); err != nil {
+			log.Error().Err(err).Msg("failed to balance pv energy")
+
+			continue
+		} else {
+			poc += delta
+		}
+		log.Info().Msg("balanced pv energy")
+
+		// Adjust ESS charge (and POC) depending on current stored energy and poc %
+		// CHANGE POC
+		if delta, err := ems.ESS.BalanceEnergy(poc, ems.PMaxSite); err != nil {
 			log.Error().Err(err).Msg("failed to balance ess energy")
 
 			continue
+		} else {
+			poc += delta
 		}
 		log.Info().Msg("balanced ess energy")
 
@@ -122,10 +160,11 @@ func (ems *EMS) BalanceSiteDischarge(poc float64) error {
 			ems.ESS.AdjustDischarge(-p)
 		} else {
 			ems.PV.AdjustDischarge(available)
-			ems.ESS.AdjustDischarge(-available)
+			ems.ESS.AdjustDischarge(-available) // TODO: potentially check result is 0 ?
 		}
 	} else if available > 0 && p < 0 {
 		// PV is discharging but ESS is charging
+		// maxChAvailable is the positive diff between ESS max charge and current charge
 		maxChAvailable := p - pMaxCh
 
 		if available > maxChAvailable {
@@ -133,7 +172,7 @@ func (ems *EMS) BalanceSiteDischarge(poc float64) error {
 			ems.ESS.AdjustDischarge(-maxChAvailable)
 		} else {
 			ems.PV.AdjustDischarge(available)
-			ems.ESS.AdjustDischarge(-available)
+			ems.ESS.AdjustDischarge(-available) // TODO: potentially check result is 0 ?
 		}
 	}
 

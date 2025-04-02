@@ -29,21 +29,21 @@ func run(prog string, filename string) {
 
 	ems := EMS{
 		ESS: ESS{
-			P:         0,
+			P:         cfg.ESS.P,
 			PmaxCh:    cfg.ESS.PmaxCh,
 			PmaxDisch: cfg.ESS.PmaxDisch,
-			E:         100,
+			E:         cfg.ESS.E,
 			Capacity:  cfg.ESS.Capacity,
 		},
 		PV: PV{
-			P:     100,
+			P:     cfg.PV.P,
 			Pprod: cfg.PV.Pprod,
 			Peak:  cfg.PV.Peak,
 		},
 		POC: POC{
-			P: 5000,
+			P: cfg.POC.P,
 		},
-		PMaxSite: 10000,
+		PMaxSite: cfg.PMaxSite,
 	}
 
 	go func() {

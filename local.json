@@ -1,12 +1,18 @@
 {
 	"ess": {
-		"PmaxCh": -1000,
-		"PmaxDisch": 1000,
-		"Capacity": 10000
+		"P": 0,
+		"pmaxch": -1000,
+		"pmaxdisch": 1000,
+		"e": 0,
+		"capacity": 10000
 	},
 	"pv": {
-		"PProd": 1000,
-		"Peak": 10000
+		"p": 0,
+		"pprod": 5000,
+		"peak": 10000
 	},
-	"pmaxsite": 10000
+	"poc": {
+		"p": 0
+	},
+	"pmaxsite": 50000
 }
